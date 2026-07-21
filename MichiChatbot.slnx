@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MichiChatbot.Core/MichiChatbot.Core.csproj" />
+    <Project Path="src/MichiChatbot.Infrastructure/MichiChatbot.Infrastructure.csproj" />
+    <Project Path="src/MichiChatbot.Web/MichiChatbot.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MichiChatbot.Tests/MichiChatbot.Tests.csproj" />
+  </Folder>
+</Solution>

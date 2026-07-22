@@ -25,10 +25,14 @@ await using (var scope = app.Services.CreateAsyncScope())
     await DbSeeder.SeedAsync(db, tenant);
 }
 
-// Liveness + DB reachability in one probe.
-app.MapGet("/healthz", async (ChatbotDbContext db) =>
+// Liveness: deliberately checks NOTHING. It may only fail when a restart would
+// help; a dependency check here turns any DB outage into a container kill-loop.
+app.MapGet("/livez", () => Results.Ok(new { status = "alive" }));
+
+// Readiness: dependency checks live here. 503 means "stop routing to me", never "restart me".
+app.MapGet("/readyz", async (ChatbotDbContext db) =>
     await db.Database.CanConnectAsync()
-        ? Results.Ok(new { status = "healthy" })
-        : Results.Json(new { status = "unhealthy" }, statusCode: StatusCodes.Status503ServiceUnavailable));
+        ? Results.Ok(new { status = "ready" })
+        : Results.Json(new { status = "not ready" }, statusCode: StatusCodes.Status503ServiceUnavailable));
 
 app.Run();

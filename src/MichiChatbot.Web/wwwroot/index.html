@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>michi-chatbot test page</title>
+<style>
+  /* Deliberately bare: this page exists to exercise /chat/stream, not to be the widget. */
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 16px;
+         background: #faf7f2; color: #222; }
+  h1 { font-size: 1.1rem; }
+  #log { border: 1px solid #ddd; background: #fff; border-radius: 8px; padding: 12px;
+         height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .msg { padding: 8px 12px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; }
+  .user { align-self: flex-end; background: #2f6f4f; color: #fff; }
+  .bot  { align-self: flex-start; background: #f0ece4; }
+  .tool { align-self: flex-start; font-size: 0.75rem; color: #777; background: #f7f7f7;
+          border: 1px dashed #ccc; }
+  .err  { align-self: center; color: #a33; font-size: 0.85rem; }
+  .meta { align-self: center; color: #aaa; font-size: 0.7rem; }
+  form { display: flex; gap: 8px; margin-top: 12px; }
+  input[type=text] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+  button { padding: 10px 18px; border: 0; border-radius: 8px; background: #2f6f4f; color: #fff;
+           cursor: pointer; }
+  button:disabled { opacity: 0.5; }
+  #reset { background: #999; }
+</style>
+</head>
+<body>
+<h1>michi-chatbot — bare test page (mugshot site)</h1>
+<div id="log"></div>
+<form id="form">
+  <input id="input" type="text" placeholder="Ask about drinks, the menu, events, how busy it is…" autofocus>
+  <button id="send" type="submit">Send</button>
+  <button id="reset" type="button" title="Forget conversation + anon id">Reset</button>
+</form>
+
+<script>
+// The same contract the real embeddable widget will use:
+//   POST /chat/stream  { message, conversationId? }
+//   headers: X-Site-Key (site credential), X-Anon-Id (visitor identity, ours to remember)
+//   response: SSE events tool / delta / done / error
+const SITE_KEY = 'pk_live_mugshot_dev';
+
+const log = document.getElementById('log');
+const form = document.getElementById('form');
+const input = document.getElementById('input');
+const send = document.getElementById('send');
+
+const add = (cls, text) => {
+  const el = document.createElement('div');
+  el.className = 'msg ' + cls;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+};
+
+document.getElementById('reset').onclick = () => {
+  localStorage.removeItem('michi.conversationId');
+  localStorage.removeItem('michi.anonId');
+  log.innerHTML = '';
+  add('meta', 'conversation reset');
+};
+
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = '';
+  send.disabled = true;
+  add('user', message);
+
+  const headers = { 'Content-Type': 'application/json', 'X-Site-Key': SITE_KEY };
+  const anonId = localStorage.getItem('michi.anonId');
+  if (anonId) headers['X-Anon-Id'] = anonId;
+  const conversationId = localStorage.getItem('michi.conversationId');
+
+  let bot = null;
+
+  try {
+    // fetch + manual SSE parsing (EventSource can't POST).
+    const res = await fetch('/chat/stream', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message, conversationId: conversationId || null }),
+    });
+    if (!res.ok) {
+      add('err', 'HTTP ' + res.status + ': ' + await res.text());
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by a blank line: "event: <type>\ndata: <json>\n\n"
+      let sep;
+      while ((sep = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const type = (frame.match(/^event: (.*)$/m) || [])[1];
+        const data = JSON.parse((frame.match(/^data: (.*)$/m) || [])[1] || '{}');
+
+        if (type === 'tool') {
+          add('tool', '🔧 ' + data.name + ' ' + (data.arguments || ''));
+        } else if (type === 'delta') {
+          if (!bot) bot = add('bot', '');
+          bot.textContent += data.text;
+          log.scrollTop = log.scrollHeight;
+        } else if (type === 'done') {
+          localStorage.setItem('michi.conversationId', data.conversationId);
+          localStorage.setItem('michi.anonId', data.anonId);
+          add('meta', `rounds ${data.rounds} · in ${data.usage.inTokens} / out ${data.usage.outTokens} tokens · ${data.latencyMs} ms`);
+        } else if (type === 'error') {
+          add('err', data.message);
+        }
+      }
+    }
+  } catch (err) {
+    add('err', 'network error: ' + err.message);
+  } finally {
+    send.disabled = false;
+    input.focus();
+  }
+};
+</script>
+</body>
+</html>

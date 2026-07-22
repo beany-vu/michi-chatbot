@@ -41,29 +41,46 @@ public static class DbSeeder
 
         // Mugshot site IS tenant-scoped: set the ambient tenant so the read filter scopes the existence
         // check AND the write interceptor stamps TenantId. Cleared again afterwards.
+        // Dev-stage reconcile: while there is no portal to edit sites, the seed is the source of
+        // truth for the mugshot site's operational fields, so an existing row is UPDATED to match
+        // (BaseUrl/Timezone/EnabledTools/PersonaPrompt). Stops the moment owners edit via portal.
         tenant.Set(mugshot.Id);
         try
         {
-            var siteExists = await db.Sites.AnyAsync(s => s.Slug == "main", ct);
-            if (!siteExists)
+            // The site's REAL public production APIs — reachable from dev, so tools return live data.
+            const string baseUrl = "https://mugshotmnl.com";
+            const string timezone = "Asia/Manila";
+            const string persona = "You are Michi, the warm, concise barista assistant for Mugshot Coffee "
+                                 + "in Manila. Keep answers short and friendly; suggest drinks when it fits.";
+            string[] enabledTools = ["get_products", "get_weather", "get_events", "get_crowdedness", "suggest_drink"];
+
+            var site = await db.Sites.FirstOrDefaultAsync(s => s.Slug == "main", ct);
+            if (site is null)
             {
                 db.Sites.Add(new Site
                 {
                     Slug = "main",
                     Name = "Mugshot Coffee",
                     PublicKey = "pk_live_mugshot_dev",
-                    BaseUrl = "http://app:3000",
-                    AllowedOrigins = ["https://mugshotcoffee.example", "http://localhost:3000"],
+                    BaseUrl = baseUrl,
+                    AllowedOrigins = ["https://mugshotmnl.com", "http://localhost:3000"],
                     Locale = "en-US",
-                    Timezone = "America/Los_Angeles",
+                    Timezone = timezone,
                     Model = "qwen-plus",
-                    PersonaPrompt = "You are a warm, concise barista assistant for Mugshot Coffee.",
-                    EnabledTools = ["get_products", "get_weather", "get_crowdedness", "suggest_drink"],
+                    PersonaPrompt = persona,
+                    EnabledTools = enabledTools,
                     Active = true,
                     // TenantId intentionally left unset — the interceptor stamps it from the accessor.
                 });
-                await db.SaveChangesAsync(ct);
             }
+            else
+            {
+                site.BaseUrl = baseUrl;
+                site.Timezone = timezone;
+                site.PersonaPrompt = persona;
+                site.EnabledTools = enabledTools;
+            }
+            await db.SaveChangesAsync(ct);
         }
         finally
         {

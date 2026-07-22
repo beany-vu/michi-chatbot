@@ -1,0 +1,35 @@
+services:
+  db:
+    # pgvector's image IS the official postgres image plus the pgvector extension —
+    # useful later for RAG/embeddings without a migration to a different image.
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: chatbot
+      POSTGRES_DB: chatbot
+      # Local-dev only: passwordless auth, matching the passwordless connection string.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      # Host port is configurable because dev machines often have other Postgres
+      # instances on 5432/5433. Point User Secrets / ConnectionStrings__Chatbot here.
+      - "127.0.0.1:${MICHI_DB_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatbot -d chatbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      ConnectionStrings__Chatbot: "Host=db;Port=5432;Database=chatbot;Username=chatbot"
+      ASPNETCORE_URLS: "http://+:8080"
+    ports:
+      - "127.0.0.1:${MICHI_API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

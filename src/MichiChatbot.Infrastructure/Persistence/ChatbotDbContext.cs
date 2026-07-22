@@ -23,6 +23,9 @@ public sealed class ChatbotDbContext(
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<Site> Sites => Set<Site>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<Message> Messages => Set<Message>();
+    public DbSet<UsageDaily> UsageDailies => Set<UsageDaily>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

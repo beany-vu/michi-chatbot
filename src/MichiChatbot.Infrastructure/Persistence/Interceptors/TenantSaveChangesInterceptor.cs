@@ -49,6 +49,22 @@ public sealed class TenantSaveChangesInterceptor(ITenantAccessor accessor) : Sav
                         throw new InvalidOperationException(
                             $"Cross-tenant write blocked: {entry.Entity.GetType().Name} targets tenant "
                             + $"{entry.Entity.TenantId}, active tenant is {activeTenant}.");
+
+                    // Site-scoped entities get the same treatment one level down: stamp SiteId from
+                    // the request, refuse rows targeting another site or written with no active site.
+                    if (entry.Entity is ISiteScoped siteScoped)
+                    {
+                        if (accessor.SiteId is not { } activeSite)
+                            throw new InvalidOperationException(
+                                $"Cannot persist {entry.Entity.GetType().Name}: no active site on the request.");
+
+                        if (siteScoped.SiteId == Guid.Empty)
+                            siteScoped.SiteId = activeSite;                   // stamp
+                        else if (siteScoped.SiteId != activeSite)
+                            throw new InvalidOperationException(
+                                $"Cross-site write blocked: {entry.Entity.GetType().Name} targets site "
+                                + $"{siteScoped.SiteId}, active site is {activeSite}.");
+                    }
                     break;
 
                 case EntityState.Modified:
@@ -57,6 +73,12 @@ public sealed class TenantSaveChangesInterceptor(ITenantAccessor accessor) : Sav
                         throw new InvalidOperationException(
                             $"Cross-tenant {entry.State} blocked: {entry.Entity.GetType().Name} belongs to "
                             + $"tenant {entry.Entity.TenantId}, active tenant is {current}.");
+
+                    if (entry.Entity is ISiteScoped scoped
+                        && accessor.SiteId is { } site && scoped.SiteId != site)
+                        throw new InvalidOperationException(
+                            $"Cross-site {entry.State} blocked: {entry.Entity.GetType().Name} belongs to "
+                            + $"site {scoped.SiteId}, active site is {site}.");
                     break;
             }
         }

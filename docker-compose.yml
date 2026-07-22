@@ -25,6 +25,11 @@ services:
     environment:
       ConnectionStrings__Chatbot: "Host=db;Port=5432;Database=chatbot;Username=chatbot"
       ASPNETCORE_URLS: "http://+:8080"
+      # host.docker.internal is Docker Desktop's DNS name for the Windows host — that's where LM
+      # Studio runs (WSL2 NAT means the container can't reach it via localhost). Model is per-machine
+      # (whatever's actually loaded), so it comes from the gitignored .env like the port vars below.
+      Llm__BaseUrl: "http://host.docker.internal:1234/v1"
+      Llm__Model: "${MICHI_LLM_MODEL}"
     ports:
       - "127.0.0.1:${MICHI_API_PORT:-8080}:8080"
     depends_on:

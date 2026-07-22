@@ -9,6 +9,18 @@ namespace MichiChatbot.Infrastructure.Llm;
 /// </summary>
 public static class DebugTools
 {
+    public static List<ToolDefinition> Definitions() =>
+        [GetCurrentTimeDefinition(), RollDiceDefinition()];
+
+    /// <summary>Executor in the shape HandRolledToolLoop expects.</summary>
+    public static Task<string> ExecuteAsync(string name, JsonElement arguments, CancellationToken _) =>
+        Task.FromResult(name switch
+        {
+            "get_current_time" => GetCurrentTime(arguments),
+            "roll_dice" => RollDice(arguments),
+            _ => JsonSerializer.Serialize(new { error = $"Unknown tool '{name}'" }),
+        });
+
     public static ToolDefinition GetCurrentTimeDefinition() => new()
     {
         Function = new FunctionDefinition

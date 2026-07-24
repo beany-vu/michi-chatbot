@@ -33,6 +33,8 @@ services:
       Llm__BaseUrl: "http://${MICHI_OLLAMA_HOST}:11434/v1"
       Llm__Model: "${MICHI_LLM_MODEL}"
       GoogleCalendar__CredentialsPath: "/run/secrets/google-calendar.json"
+      # OTLP over gRPC to Jaeger, same docker network.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
     volumes:
       - ${MICHI_GOOGLE_SA_KEY_PATH}:/run/secrets/google-calendar.json:ro
     ports:
@@ -40,6 +42,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      jaeger:
+        condition: service_started
+
+  # Trace viewer (phase 3) — all-in-one Jaeger: OTLP receiver + UI, nothing else to configure.
+  # Dev only; plan.md's original idea was the .NET-native Aspire dashboard, but Jaeger needs zero
+  # extra wiring beyond the standard OTLP exporter, so it's the simpler choice here.
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${MICHI_JAEGER_UI_PORT:-16686}:16686"
 
   # Browser DB inspector — nothing to configure, connect with Server=db, User=chatbot, DB=chatbot,
   # blank password (same trust auth as psql). Not for prod; dev convenience only.

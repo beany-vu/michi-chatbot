@@ -1,0 +1,114 @@
+[
+  {
+    "id": "venue-capacity",
+    "category": "grounding",
+    "question": "How many guests can the venue hold for a private event?",
+    "expectedFacts": ["up to 20 guests"],
+    "mustNotClaim": [],
+    "expectedTool": "get_venue_facts"
+  },
+  {
+    "id": "venue-pricing-no-hallucination",
+    "category": "hallucination-guard",
+    "question": "How much does it cost to rent the venue per hour?",
+    "expectedFacts": ["no fixed rate is published", "contact for a custom quote"],
+    "mustNotClaim": ["a specific peso amount", "a specific dollar amount", "a specific hourly rate"],
+    "expectedTool": "get_venue_facts"
+  },
+  {
+    "id": "venue-amenities",
+    "category": "grounding",
+    "question": "Does the venue have wifi and parking for events?",
+    "expectedFacts": ["free wifi", "free parking"],
+    "mustNotClaim": [],
+    "expectedTool": "get_venue_facts"
+  },
+  {
+    "id": "venue-rules-missing-fact-honesty",
+    "category": "hallucination-guard",
+    "question": "What is your cancellation policy for venue bookings?",
+    "expectedFacts": ["the bot does not have a published cancellation policy", "suggests contacting the shop directly"],
+    "mustNotClaim": ["a specific cancellation policy, deadline, or fee that was never seeded"],
+    "expectedTool": "get_venue_facts"
+  },
+  {
+    "id": "venue-contact",
+    "category": "grounding",
+    "question": "How do I get in touch about hosting an event?",
+    "expectedFacts": ["mugshotcoffeeph@gmail.com", "+63 2 8570 3155"],
+    "mustNotClaim": [],
+    "expectedTool": "get_venue_facts"
+  },
+  {
+    "id": "venue-hours",
+    "category": "grounding",
+    "question": "What are your opening hours?",
+    "expectedFacts": ["Monday to Friday 1pm to 10pm", "Saturday and Sunday 11am to 10pm"],
+    "mustNotClaim": [],
+    "expectedTool": null
+  },
+  {
+    "id": "check-availability-tool-use",
+    "category": "tool-selection",
+    "question": "Can you check if the venue is free on 2026-09-01 from 2pm to 4pm?",
+    "expectedFacts": ["states whether the slot is available or not"],
+    "mustNotClaim": ["a booking confirmation without checking availability first"],
+    "expectedTool": "check_availability"
+  },
+  {
+    "id": "weather-tool-use",
+    "category": "tool-selection",
+    "question": "What's the weather like right now?",
+    "expectedFacts": ["a real-sounding current weather description"],
+    "mustNotClaim": [],
+    "expectedTool": "get_weather"
+  },
+  {
+    "id": "menu-tool-use",
+    "category": "tool-selection",
+    "question": "What coffee drinks do you have on the menu?",
+    "expectedFacts": ["names real drink items"],
+    "mustNotClaim": ["a menu item that sounds fabricated rather than from the real catalog"],
+    "expectedTool": "get_products"
+  },
+  {
+    "id": "crowdedness-tool-use",
+    "category": "tool-selection",
+    "question": "Is it busy at the shop right now?",
+    "expectedFacts": ["a busyness level (quiet/moderate/busy/packed)"],
+    "mustNotClaim": [],
+    "expectedTool": "get_crowdedness"
+  },
+  {
+    "id": "composite-tool-preference",
+    "category": "tool-selection",
+    "question": "What should I drink today?",
+    "expectedFacts": ["a drink recommendation tied to weather or context"],
+    "mustNotClaim": [],
+    "expectedTool": "suggest_drink"
+  },
+  {
+    "id": "events-tool-use",
+    "category": "tool-selection",
+    "question": "Are there any events happening soon?",
+    "expectedFacts": ["either lists real upcoming events or says there are none"],
+    "mustNotClaim": ["a fabricated event that wasn't returned by the tool"],
+    "expectedTool": "get_events"
+  },
+  {
+    "id": "off-topic-scoping",
+    "category": "scope",
+    "question": "What is the capital of France?",
+    "expectedFacts": ["redirects to coffee-shop/venue topics or politely declines"],
+    "mustNotClaim": ["a confident unrelated trivia answer as if it were an on-topic response"],
+    "expectedTool": null
+  },
+  {
+    "id": "multilingual-french",
+    "category": "multilingual",
+    "question": "Il pleut aujourd'hui, qu'est-ce que je devrais boire?",
+    "expectedFacts": ["a weather-appropriate drink recommendation, understanding the French input"],
+    "mustNotClaim": [],
+    "expectedTool": "suggest_drink"
+  }
+]

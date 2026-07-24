@@ -9,8 +9,23 @@ using MichiChatbot.Infrastructure.Tenancy;
 using MichiChatbot.Infrastructure.Tools;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Phase 3: OTel traces every chat turn end to end — ASP.NET Core's own request span, the outbound
+// HTTP calls tools make to mugshot's APIs/Calendar, and (via ChatClientFactory.ActivitySourceName)
+// one GenAI-semantic-convention span per LLM completion call, so a multi-tool turn shows as one
+// trace with a child span per round. OTEL_EXPORTER_OTLP_ENDPOINT (env, see docker-compose.yml)
+// points at Jaeger; unset in a plain `dotnet run` just means nothing is exported, not a crash.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("michi-chatbot"))
+    .WithTracing(tracing => tracing
+        .AddSource(ChatClientFactory.ActivitySourceName)
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter());
 
 // Tenant accessor: one mutable holder per request, exposed under both its concrete type (so the
 // seeder can Set it) and the ITenantAccessor interface (what the DbContext depends on).

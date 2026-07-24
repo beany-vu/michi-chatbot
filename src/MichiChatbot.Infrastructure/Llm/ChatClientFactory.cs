@@ -18,6 +18,10 @@ namespace MichiChatbot.Infrastructure.Llm;
 /// </summary>
 public sealed class ChatClientFactory(IOptions<LlmOptions> options, ILoggerFactory loggerFactory)
 {
+    /// <summary>ActivitySource name the OTel tracer provider subscribes to (see Program.cs) — kept
+    /// explicit rather than relying on Microsoft.Extensions.AI's internal default.</summary>
+    public const string ActivitySourceName = "MichiChatbot.Llm";
+
     private readonly ConcurrentDictionary<string, IChatClient> _byModel = new();
 
     public IChatClient GetForModel(string model) => _byModel.GetOrAdd(model, m =>
@@ -35,6 +39,10 @@ public sealed class ChatClientFactory(IOptions<LlmOptions> options, ILoggerFacto
             .UseFunctionInvocation(loggerFactory, c =>
                 c.MaximumIterationsPerRequest = HandRolledToolLoop.MaxRounds)
             .UseLogging(loggerFactory)
+            // Innermost, right before the transport: one span per actual completion call (so a
+            // multi-tool turn shows as multiple spans, one per round), tagged per the OTel GenAI
+            // semantic conventions (model, token counts, etc.) — plan.md phase 3.
+            .UseOpenTelemetry(loggerFactory, ActivitySourceName)
             .Build();
     });
 

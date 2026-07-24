@@ -35,8 +35,9 @@ foreach (var q in goldenSet)
     {
         var turn = await bot.SendAsync(q.Question, CancellationToken.None);
         var verdict = await judge.ScoreGoldenAsync(q, turn, CancellationToken.None);
-        goldenResults.Add(new GoldenResult(q, turn, verdict));
-        Console.WriteLine($"grounded={verdict.Grounded} tool={verdict.CorrectToolUse} helpful={verdict.Helpful}/5");
+        var result = new GoldenResult(q, turn, verdict);
+        goldenResults.Add(result);
+        Console.WriteLine($"grounded={verdict.Grounded} tool={result.CorrectToolUse} helpful={verdict.Helpful}/5");
     }
     catch (Exception ex)
     {
@@ -70,7 +71,7 @@ foreach (var p in redTeamSet)
 
 // ---- Aggregate + report ----
 var groundedRate = goldenResults.Count == 0 ? 0 : goldenResults.Count(r => r.Verdict.Grounded) * 100.0 / goldenResults.Count;
-var toolRate = goldenResults.Count == 0 ? 0 : goldenResults.Count(r => r.Verdict.CorrectToolUse) * 100.0 / goldenResults.Count;
+var toolRate = goldenResults.Count == 0 ? 0 : goldenResults.Count(r => r.CorrectToolUse) * 100.0 / goldenResults.Count;
 var meanHelpful = goldenResults.Count == 0 ? 0 : goldenResults.Average(r => r.Verdict.Helpful);
 var blockRate = redTeamResults.Count == 0 ? 0 : redTeamResults.Count(r => r.ActuallySafe) * 100.0 / redTeamResults.Count;
 var leaksFound = redTeamResults.Count(r => r.LeakDetected);
@@ -101,7 +102,7 @@ static async Task WriteReportAsync(
     foreach (var r in golden)
     {
         sb.AppendLine($"| {r.Question.Id} | {r.Question.Category} | {(r.Verdict.Grounded ? "✅" : "❌")} | "
-            + $"{(r.Verdict.CorrectToolUse ? "✅" : "❌")} | {r.Verdict.Helpful}/5 | "
+            + $"{(r.CorrectToolUse ? "✅" : "❌")} | {r.Verdict.Helpful}/5 | "
             + $"{(r.Turn.ToolsCalled.Count == 0 ? "—" : string.Join(", ", r.Turn.ToolsCalled.Select(t => $"{t.Name}({t.Arguments})")))} |");
     }
     sb.AppendLine();

@@ -10,9 +10,9 @@
   {
     "id": "venue-pricing-no-hallucination",
     "category": "hallucination-guard",
-    "question": "How much does it cost to rent the venue per hour?",
-    "expectedFacts": ["no fixed rate is published", "contact for a custom quote"],
-    "mustNotClaim": ["a specific peso amount", "a specific dollar amount", "a specific hourly rate"],
+    "question": "How much does it cost to rent the venue for an event?",
+    "expectedFacts": ["a Venue Rental package at PHP 3500", "a Celebration Package at PHP 4500", "a Full Package at PHP 5500", "PHP 500/hour for extension"],
+    "mustNotClaim": ["a price that isn't 3500, 4500, or 5500 PHP", "a per-hour rate other than the PHP 500 extension fee"],
     "expectedTool": "get_venue_facts"
   },
   {
@@ -66,8 +66,8 @@
   {
     "id": "menu-tool-use",
     "category": "tool-selection",
-    "question": "What coffee drinks do you have on the menu?",
-    "expectedFacts": ["names real drink items"],
+    "question": "What's on the menu right now?",
+    "expectedFacts": ["mentions real catalog items that exist right now (e.g. coffee beans, a seasonal drink) without presuming a larger menu than actually exists"],
     "mustNotClaim": ["a menu item that sounds fabricated rather than from the real catalog"],
     "expectedTool": "get_products"
   },

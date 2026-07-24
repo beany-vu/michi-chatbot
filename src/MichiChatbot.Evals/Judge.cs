@@ -14,20 +14,29 @@ public sealed class Judge(HttpClient ollama, string judgeModel)
 {
     public async Task<GoldenVerdict> ScoreGoldenAsync(GoldenQuestion q, ChatTurnResult turn, CancellationToken ct)
     {
+        // NOTE: correctToolUse is deliberately NOT asked of the judge — see GoldenResult.cs. Two
+        // separate runs proved the judge unreliable on this specific field, including cases where
+        // it contradicted its OWN prose reasoning and the tool-call list handed to it directly in
+        // this same prompt (e.g. calling a real, live product "fictional"). Whether the expected
+        // tool was called is a plain fact we already have; asking an LLM to re-derive it added
+        // noise, not signal. Grounded/helpful genuinely need semantic judgment, so those stay.
         var prompt = $$"""
             You are grading a coffee-shop chatbot's answer. Be strict about hallucination.
 
             Customer asked: "{{q.Question}}"
             Bot answered: "{{turn.Answer}}"
             Tools the bot called: {{(turn.ToolsCalled.Count == 0 ? "none" : string.Join("; ", turn.ToolsCalled.Select(t => $"{t.Name}({t.Arguments})")))}}
-            Expected tool (if any): {{q.ExpectedTool ?? "none required"}}
 
             Facts the answer SHOULD reflect: {{string.Join("; ", q.ExpectedFacts)}}
             Claims the answer MUST NOT make up: {{(q.MustNotClaim.Count == 0 ? "none" : string.Join("; ", q.MustNotClaim))}}
 
-            Score grounded=true only if the bot did not invent any fact it wasn't given. Score
-            correctToolUse=true if it called the expected tool (or, if none is required, if it didn't
-            call an irrelevant one). helpful is 1-5, how useful the answer is to the customer.
+            Score grounded=true only if the bot did not invent any fact it wasn't given. IMPORTANT:
+            if "expected facts" says the answer should decline, redirect, or say it doesn't know
+            something, then correctly doing exactly that counts as grounded=true and should score
+            helpful=4 or 5 — declining an out-of-scope or unpublished-fact question is the CORRECT
+            behavior, not a failure to answer, and must not be penalized as ungrounded or unhelpful.
+            helpful is 1-5, how useful the answer is to the customer given what a good answer looks
+            like in context (a correct decline can be a 5/5 answer).
             """;
 
         var schema = """
@@ -35,11 +44,10 @@ public sealed class Judge(HttpClient ollama, string judgeModel)
               "type": "object",
               "properties": {
                 "grounded": { "type": "boolean" },
-                "correctToolUse": { "type": "boolean" },
                 "helpful": { "type": "integer", "minimum": 1, "maximum": 5 },
                 "reasoning": { "type": "string" }
               },
-              "required": ["grounded", "correctToolUse", "helpful", "reasoning"],
+              "required": ["grounded", "helpful", "reasoning"],
               "additionalProperties": false
             }
             """;
@@ -47,7 +55,6 @@ public sealed class Judge(HttpClient ollama, string judgeModel)
         var json = await CallJsonSchemaAsync(prompt, schema, ct);
         return new GoldenVerdict(
             json.GetProperty("grounded").GetBoolean(),
-            json.GetProperty("correctToolUse").GetBoolean(),
             json.GetProperty("helpful").GetInt32(),
             json.GetProperty("reasoning").GetString() ?? "");
     }

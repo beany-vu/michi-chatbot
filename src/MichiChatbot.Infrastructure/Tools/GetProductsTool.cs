@@ -29,7 +29,8 @@ public sealed class GetProductsTool(IHttpClientFactory httpClientFactory) : ICha
                     category = new
                     {
                         type = "string",
-                        description = "Optional category filter, e.g. 'seasonal-drink'. Omit for everything.",
+                        description = "Optional category filter, e.g. 'seasonal-drink' or 'coffee-bean' "
+                                     + "(matches loosely, so 'coffee' or 'drink' also work). Omit for everything.",
                     },
                 },
                 required = Array.Empty<string>(),
@@ -54,7 +55,14 @@ public sealed class GetProductsTool(IHttpClientFactory httpClientFactory) : ICha
                 if (p.TryGetProperty("isActive", out var active) && active.ValueKind == JsonValueKind.False)
                     continue;
                 var productCategory = p.GetPropertyOrNull("category");
-                if (category is not null && !string.Equals(productCategory, category, StringComparison.OrdinalIgnoreCase))
+                // Substring match, not exact — the model's category GUESS ("coffee") won't always
+                // match the catalog's real slug ("coffee-bean") exactly, and unlike venue_facts'
+                // fixed 6-value taxonomy, this list is mugshot's own live, growing catalog, not
+                // something to hardcode an enum against. Found via the phase-3 eval harness's
+                // tool-argument logging: "coffee" filtered out every real product, silently.
+                if (category is not null && (productCategory is null
+                        || (!productCategory.Contains(category, StringComparison.OrdinalIgnoreCase)
+                            && !category.Contains(productCategory, StringComparison.OrdinalIgnoreCase))))
                     continue;
 
                 trimmed.Add(new

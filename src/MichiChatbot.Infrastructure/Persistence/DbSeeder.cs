@@ -103,14 +103,21 @@ public static class DbSeeder
             tenant.Set(mugshot.Id, site.Id);
 
             // Real facts pulled from mugshotmnl.com (2026-07-24): the venue-rental page itself is
-            // just two promo images (no text), but the homepage's own marketing copy and schema.org
-            // markup carry real numbers. No public price is published ANYWHERE — seeding one would
-            // violate this phase's own "never invent venue facts" rule, so Pricing points to contact
-            // instead of a made-up rate.
+            // just two promo images (no text) — genuinely no text-based pricing anywhere, but the
+            // IMAGES themselves ("MUGSHOT ARTISAN CAFE EVENT RATES") carry real published prices,
+            // only found by actually viewing them, not by grepping/WebFetch-summarizing the page's
+            // text. Corrected same day after first shipping "no fixed rate published", which was
+            // itself a real, if honest, mistake — the rate exists, it just isn't text.
             await EnsureVenueFactAsync(db, site, VenueFactCategory.Capacity, "max-guests",
                 "\"Up to 20 guests\"", ct);
-            await EnsureVenueFactAsync(db, site, VenueFactCategory.Pricing, "quote",
-                "\"No fixed rate published — priced per event, contact us for a custom quote.\"", ct);
+            await EnsureVenueFactAsync(db, site, VenueFactCategory.Pricing, "packages",
+                """
+                [
+                  {"name": "Venue Rental", "price": "PHP 3500", "inclusions": ["Exclusive shop rental (3 hours)", "PHP 2500 consumable on food and drinks", "PHP 500/hour for extension"]},
+                  {"name": "Celebration Package", "price": "PHP 4500", "inclusions": ["Coffee and non-coffee drinks for 10 guests", "One whole cake OR 10 pasta servings OR popcorn good for 10 pax", "Free use of speaker and projector", "3 hours exclusive use", "PHP 500/hour for extension"]},
+                  {"name": "Full Package", "price": "PHP 5500", "inclusions": ["Coffee and non-coffee drinks for 10 guests", "One whole cake", "10 pasta servings of choice", "Popcorn good for 10 pax", "Free use of speaker and projector", "3 hours exclusive use", "PHP 500/hour for extension"]}
+                ]
+                """, ct);
             await EnsureVenueFactAsync(db, site, VenueFactCategory.Amenities, "included",
                 """["Free Wi-Fi", "Free parking", "Pet-friendly", "Custom catering available"]""", ct);
             // No published booking rules/policy exists — deliberately NOT seeded (a missing fact

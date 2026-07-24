@@ -18,6 +18,10 @@ public interface IChatTool
     /// <summary>The OpenAI-compatible function definition sent to the model.</summary>
     ToolDefinition BuildDefinition(Site site);
 
-    /// <summary>Executes with model-provided arguments; returns a JSON string fed back as the tool result.</summary>
-    Task<string> ExecuteAsync(JsonElement arguments, Site site, CancellationToken ct);
+    /// <summary>
+    /// Executes with model-provided arguments; returns a JSON string fed back as the tool result.
+    /// <paramref name="conversationId"/> is the current turn's conversation — most tools ignore it;
+    /// booking-related tools use it as part of their idempotency key.
+    /// </summary>
+    Task<string> ExecuteAsync(JsonElement arguments, Site site, Guid conversationId, CancellationToken ct);
 }

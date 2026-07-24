@@ -30,8 +30,21 @@ services:
       # (whatever's actually loaded), so it comes from the gitignored .env like the port vars below.
       Llm__BaseUrl: "http://host.docker.internal:1234/v1"
       Llm__Model: "${MICHI_LLM_MODEL}"
+      GoogleCalendar__CredentialsPath: "/run/secrets/google-calendar.json"
+    volumes:
+      - ${MICHI_GOOGLE_SA_KEY_PATH}:/run/secrets/google-calendar.json:ro
     ports:
       - "127.0.0.1:${MICHI_API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Browser DB inspector — nothing to configure, connect with Server=db, User=chatbot, DB=chatbot,
+  # blank password (same trust auth as psql). Not for prod; dev convenience only.
+  adminer:
+    image: adminer:latest
+    ports:
+      - "127.0.0.1:${MICHI_ADMINER_PORT:-8082}:8080"
     depends_on:
       db:
         condition: service_healthy

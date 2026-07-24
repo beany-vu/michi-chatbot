@@ -21,7 +21,7 @@ public sealed class GetEventsTool(IHttpClientFactory httpClientFactory) : IChatT
         },
     };
 
-    public async Task<string> ExecuteAsync(JsonElement arguments, Site site, CancellationToken ct)
+    public async Task<string> ExecuteAsync(JsonElement arguments, Site site, Guid conversationId, CancellationToken ct)
     {
         try
         {

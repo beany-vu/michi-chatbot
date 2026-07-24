@@ -26,6 +26,8 @@ public sealed class ChatbotDbContext(
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<UsageDaily> UsageDailies => Set<UsageDaily>();
+    public DbSet<VenueFact> VenueFacts => Set<VenueFact>();
+    public DbSet<BookingRequest> BookingRequests => Set<BookingRequest>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

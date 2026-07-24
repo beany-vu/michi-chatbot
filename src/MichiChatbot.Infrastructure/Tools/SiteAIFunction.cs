@@ -14,14 +14,16 @@ namespace MichiChatbot.Infrastructure.Tools;
 public sealed class SiteAIFunction : AIFunction
 {
     private readonly Site _site;
+    private readonly Guid _conversationId;
     private readonly ToolRegistry _registry;
     private readonly string _name;
     private readonly string _description;
     private readonly JsonElement _schema;
 
-    public SiteAIFunction(IChatTool tool, Site site, ToolRegistry registry)
+    public SiteAIFunction(IChatTool tool, Site site, Guid conversationId, ToolRegistry registry)
     {
         _site = site;
+        _conversationId = conversationId;
         _registry = registry;
         var definition = tool.BuildDefinition(site);
         _name = definition.Function.Name;
@@ -41,7 +43,7 @@ public sealed class SiteAIFunction : AIFunction
         // for our tools. Routing through the registry keeps its contract: failures come back as
         // JSON error strings TO THE MODEL, never as exceptions.
         var args = JsonSerializer.SerializeToElement(arguments);
-        var result = await _registry.ExecuteAsync(_name, args, _site, cancellationToken);
+        var result = await _registry.ExecuteAsync(_name, args, _site, _conversationId, cancellationToken);
 
         // Tools return JSON strings; hand them back as JsonElement so the framework serializes
         // them as raw JSON instead of a double-encoded quoted string.

@@ -25,7 +25,7 @@ public sealed class GetWeatherTool(IHttpClientFactory httpClientFactory) : IChat
         },
     };
 
-    public async Task<string> ExecuteAsync(JsonElement arguments, Site site, CancellationToken ct)
+    public async Task<string> ExecuteAsync(JsonElement arguments, Site site, Guid conversationId, CancellationToken ct)
     {
         try
         {

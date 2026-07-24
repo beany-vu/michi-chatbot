@@ -32,7 +32,7 @@ public sealed class GetCrowdednessTool : IChatTool
         },
     };
 
-    public Task<string> ExecuteAsync(JsonElement arguments, Site site, CancellationToken ct)
+    public Task<string> ExecuteAsync(JsonElement arguments, Site site, Guid conversationId, CancellationToken ct)
     {
         var now = SiteApi.SiteNow(site);
         var isWeekend = now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;

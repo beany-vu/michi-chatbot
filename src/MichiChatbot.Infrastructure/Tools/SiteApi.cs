@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Text.Json;
 using MichiChatbot.Core.Entities;
 
@@ -28,6 +29,18 @@ public static class SiteApi
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
         return doc.RootElement.Clone();
+    }
+
+    /// <summary>
+    /// POSTs <paramref name="body"/> as JSON to <paramref name="pathAndQuery"/> under the site's
+    /// BaseUrl. Same trailing-slash convention as <see cref="GetJsonAsync"/>.
+    /// </summary>
+    public static async Task PostJsonAsync(
+        HttpClient http, Site site, string pathAndQuery, object body, CancellationToken ct)
+    {
+        var baseUrl = site.BaseUrl.EndsWith('/') ? site.BaseUrl : site.BaseUrl + "/";
+        using var response = await http.PostAsJsonAsync(baseUrl + pathAndQuery, body, Json, ct);
+        response.EnsureSuccessStatusCode();
     }
 
     /// <summary>Error results go back to the MODEL as JSON, not up the stack — it can apologize or retry.</summary>

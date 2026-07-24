@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using MichiChatbot.Core.Abstractions;
+using MichiChatbot.Infrastructure.Calendar;
 using MichiChatbot.Infrastructure.Chat;
 using MichiChatbot.Infrastructure.Llm;
 using MichiChatbot.Infrastructure.Persistence;
@@ -39,6 +40,11 @@ builder.Services.AddHttpClient(SiteApi.HttpClientName, client =>
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 
+// Google Calendar: one platform-wide service account (see plan.md phase 2). Singleton — the
+// credential file is read once; the wrapper is stateless HTTP after that.
+builder.Services.Configure<GoogleCalendarOptions>(builder.Configuration.GetSection(GoogleCalendarOptions.SectionName));
+builder.Services.AddSingleton<GoogleCalendarService>();
+
 // The real chat path speaks to the LLM through Microsoft.Extensions.AI (ChatClientFactory builds
 // the pipeline: function-invocation loop → logging → OpenAI-compatible transport). The hand-rolled
 // loop stays registered for /debug/chat — the raw wire format, kept visible on purpose.
@@ -53,7 +59,15 @@ builder.Services.AddSingleton<IChatTool, GetProductsTool>();
 builder.Services.AddSingleton<IChatTool, GetEventsTool>();
 builder.Services.AddSingleton<IChatTool, GetCrowdednessTool>();
 builder.Services.AddSingleton<IChatTool, SuggestDrinkTool>();
-builder.Services.AddSingleton<ToolRegistry>();
+builder.Services.AddSingleton<IChatTool, CheckAvailabilityTool>();
+// These two need ChatbotDbContext (Scoped) — Scoped, not Singleton, so they share THIS request's
+// context (and its already-set ambient tenant) instead of a disconnected one from a fresh DI scope.
+builder.Services.AddScoped<IChatTool, GetVenueFactsTool>();
+builder.Services.AddScoped<IChatTool, CreateBookingRequestTool>();
+// ToolRegistry itself must be Scoped too: a Singleton can't hold the two Scoped tools above without
+// either an invalid captive-dependency (DI would refuse it) or a disconnected child scope (the
+// ambient-tenant bug this codebase specifically guards against elsewhere).
+builder.Services.AddScoped<ToolRegistry>();
 
 var app = builder.Build();
 

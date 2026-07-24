@@ -40,7 +40,7 @@ public sealed class SuggestDrinkTool(IHttpClientFactory httpClientFactory) : ICh
         },
     };
 
-    public async Task<string> ExecuteAsync(JsonElement arguments, Site site, CancellationToken ct)
+    public async Task<string> ExecuteAsync(JsonElement arguments, Site site, Guid conversationId, CancellationToken ct)
     {
         var http = httpClientFactory.CreateClient(SiteApi.HttpClientName);
 
@@ -79,7 +79,7 @@ public sealed class SuggestDrinkTool(IHttpClientFactory httpClientFactory) : ICh
             }
         }
 
-        var crowd = await new GetCrowdednessTool().ExecuteAsync(default, site, ct);
+        var crowd = await new GetCrowdednessTool().ExecuteAsync(default, site, conversationId, ct);
 
         var occasion = arguments.ValueKind == JsonValueKind.Object
                        && arguments.TryGetProperty("occasion", out var o)

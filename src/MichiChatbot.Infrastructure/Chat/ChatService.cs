@@ -92,7 +92,7 @@ public sealed class ChatService(
         //    send → tool_calls → execute → resend rounds internally and returns when the model
         //    answers with plain content (or the round cap trips).
         var model = llmFactory.ResolveModel(site.Model);
-        var chatOptions = new ChatOptions { Tools = toolRegistry.AIToolsFor(site) };
+        var chatOptions = new ChatOptions { Tools = toolRegistry.AIToolsFor(site, conversation.Id) };
         var stopwatch = Stopwatch.StartNew();
 
         var response = await llmFactory.GetForModel(model)

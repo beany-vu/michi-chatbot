@@ -52,12 +52,19 @@ public static class DbSeeder
             const string timezone = "Asia/Manila";
             const string persona = "You are Michi, the warm, concise barista assistant for Mugshot Coffee "
                                  + "in Manila. Keep answers short and friendly; suggest drinks when it fits.";
-            string[] enabledTools = ["get_products", "get_weather", "get_events", "get_crowdedness", "suggest_drink"];
+            // Phase 2's calendar id: mugshot's real booking calendar, shared with the platform's
+            // service account (mugshotmnl@mugshotmnl.iam.gserviceaccount.com) during onboarding.
+            const string googleCalendarId = "94db2a9c8dfb7b3bcae50b93d5a76c097a0f86367e758fa57126779cb0143fc7@group.calendar.google.com";
+            string[] enabledTools =
+            [
+                "get_products", "get_weather", "get_events", "get_crowdedness", "suggest_drink",
+                "get_venue_facts", "check_availability", "create_booking_request",
+            ];
 
             var site = await db.Sites.FirstOrDefaultAsync(s => s.Slug == "main", ct);
             if (site is null)
             {
-                db.Sites.Add(new Site
+                site = new Site
                 {
                     Slug = "main",
                     Name = "Mugshot Coffee",
@@ -69,9 +76,11 @@ public static class DbSeeder
                     Model = "qwen-plus",
                     PersonaPrompt = persona,
                     EnabledTools = enabledTools,
+                    GoogleCalendarId = googleCalendarId,
                     Active = true,
                     // TenantId intentionally left unset — the interceptor stamps it from the accessor.
-                });
+                };
+                db.Sites.Add(site);
             }
             else
             {
@@ -79,13 +88,54 @@ public static class DbSeeder
                 site.Timezone = timezone;
                 site.PersonaPrompt = persona;
                 site.EnabledTools = enabledTools;
+                site.GoogleCalendarId = googleCalendarId;
             }
+            await db.SaveChangesAsync(ct);
+
+            // VenueFact is ISiteScoped (unlike Site itself) — the write interceptor refuses to
+            // stamp it without an active SiteId, so the accessor needs the site now that it exists.
+            tenant.Set(mugshot.Id, site.Id);
+
+            // Real facts pulled from mugshotmnl.com (2026-07-24): the venue-rental page itself is
+            // just two promo images (no text), but the homepage's own marketing copy and schema.org
+            // markup carry real numbers. No public price is published ANYWHERE — seeding one would
+            // violate this phase's own "never invent venue facts" rule, so Pricing points to contact
+            // instead of a made-up rate.
+            await EnsureVenueFactAsync(db, site, VenueFactCategory.Capacity, "max-guests",
+                "\"Up to 20 guests\"", ct);
+            await EnsureVenueFactAsync(db, site, VenueFactCategory.Pricing, "quote",
+                "\"No fixed rate published — priced per event, contact us for a custom quote.\"", ct);
+            await EnsureVenueFactAsync(db, site, VenueFactCategory.Amenities, "included",
+                """["Free Wi-Fi", "Free parking", "Pet-friendly", "Custom catering available"]""", ct);
+            // No published booking rules/policy exists — deliberately NOT seeded (a missing fact
+            // means get_venue_facts returns nothing and the bot says so honestly, per its system
+            // prompt, instead of guessing).
+            await EnsureVenueFactAsync(db, site, VenueFactCategory.Hours, "booking-window",
+                """{"note": "Same as café hours", "monToFri": "1pm-10pm", "satSun": "11am-10pm"}""", ct);
+            await EnsureVenueFactAsync(db, site, VenueFactCategory.Contact, "events-contact",
+                """{"email": "mugshotcoffeeph@gmail.com", "phone": "+63 2 8570 3155"}""", ct);
             await db.SaveChangesAsync(ct);
         }
         finally
         {
             tenant.Set(null);
         }
+    }
+
+    private static async Task EnsureVenueFactAsync(
+        ChatbotDbContext db, Site site, VenueFactCategory category, string code, string jsonValue,
+        CancellationToken ct)
+    {
+        var existing = await db.VenueFacts
+            .FirstOrDefaultAsync(v => v.SiteId == site.Id && v.Code == code, ct);
+        if (existing is not null)
+        {
+            existing.Category = category;
+            existing.Value = jsonValue;
+            return;
+        }
+
+        db.VenueFacts.Add(new VenueFact { Category = category, Code = code, Value = jsonValue });
     }
 
     private static async Task<Plan> EnsurePlanAsync(

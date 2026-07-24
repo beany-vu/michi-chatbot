@@ -20,6 +20,13 @@ public sealed class ToolRegistry(IEnumerable<IChatTool> tools)
             .Select(code => _byCode[code].BuildDefinition(site))
             .ToList();
 
+    /// <summary>The same enabled-tools intersection, as Microsoft.Extensions.AI AIFunctions.</summary>
+    public List<Microsoft.Extensions.AI.AITool> AIToolsFor(Site site) =>
+        site.EnabledTools
+            .Where(_byCode.ContainsKey)
+            .Select(Microsoft.Extensions.AI.AITool (code) => new SiteAIFunction(_byCode[code], site, this))
+            .ToList();
+
     /// <summary>
     /// Executes a model-requested call. Unknown tools and execution failures return JSON error
     /// strings TO THE MODEL (it can recover in the next round) instead of failing the request.

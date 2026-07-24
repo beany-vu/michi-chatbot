@@ -39,6 +39,10 @@ builder.Services.AddHttpClient(SiteApi.HttpClientName, client =>
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 
+// The real chat path speaks to the LLM through Microsoft.Extensions.AI (ChatClientFactory builds
+// the pipeline: function-invocation loop → logging → OpenAI-compatible transport). The hand-rolled
+// loop stays registered for /debug/chat — the raw wire format, kept visible on purpose.
+builder.Services.AddSingleton<ChatClientFactory>();
 builder.Services.AddScoped<HandRolledToolLoop>();
 builder.Services.AddScoped<ChatService>();
 

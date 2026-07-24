@@ -6,18 +6,21 @@ using MichiChatbot.Infrastructure.Llm;
 using MichiChatbot.Infrastructure.Persistence;
 using MichiChatbot.Infrastructure.Tools;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 
 namespace MichiChatbot.Infrastructure.Chat;
 
 /// <summary>
 /// One user turn, end to end: load/create the conversation, rebuild history (the LLM API is
-/// stateless — "memory" is us resending it), run the tool loop with the site's enabled tools,
+/// stateless — "memory" is us resending it), run the model with the site's enabled tools,
 /// persist both message rows, upsert the daily usage rollup, and emit SSE-shaped events through
 /// the <paramref name="emit"/> callback along the way.
+/// The tool loop itself is now Microsoft.Extensions.AI's UseFunctionInvocation() (see
+/// ChatClientFactory) — the hand-rolled version it replaced lives on behind /debug/chat.
 /// </summary>
 public sealed class ChatService(
     ChatbotDbContext db,
-    HandRolledToolLoop loop,
+    ChatClientFactory llmFactory,
     ToolRegistry toolRegistry)
 {
     /// <summary>History window: only the most recent turns are resent — input tokens grow with history.</summary>
@@ -45,7 +48,7 @@ public sealed class ChatService(
             Locale = site.Locale,
         }).Entity;
 
-        // 2. Rebuild the wire history from persisted rows: newest N, then chronological. Only
+        // 2. Rebuild the history from persisted rows: newest N, then chronological. Only
         //    user/assistant text turns re-enter history — tool internals were context for ONE
         //    answer, not durable conversation state.
         var history = conversation.Id == Guid.Empty
@@ -61,24 +64,18 @@ public sealed class ChatService(
                 .ToList();
 
         var siteNow = SiteApi.SiteNow(site);
-        var messages = new List<WireMessage>
+        var messages = new List<ChatMessage>
         {
-            new()
-            {
-                Role = "system",
-                Content = $"{site.PersonaPrompt}\n\n"
-                        + $"You are chatting on behalf of {site.Name}. "
-                        + $"Local date/time: {siteNow:dddd yyyy-MM-dd HH:mm} ({site.Timezone}). "
-                        + "Use the available tools for live facts (menu, weather, events, busyness) "
-                        + "instead of guessing; if you don't know and no tool helps, say so honestly.",
-            },
+            new(ChatRole.System,
+                $"{site.PersonaPrompt}\n\n"
+                + $"You are chatting on behalf of {site.Name}. "
+                + $"Local date/time: {siteNow:dddd yyyy-MM-dd HH:mm} ({site.Timezone}). "
+                + "Use the available tools for live facts (menu, weather, events, busyness) "
+                + "instead of guessing; if you don't know and no tool helps, say so honestly."),
         };
-        messages.AddRange(history.Select(m => new WireMessage
-        {
-            Role = m.Role == MessageRole.User ? "user" : "assistant",
-            Content = m.Content,
-        }));
-        messages.Add(new WireMessage { Role = "user", Content = userText });
+        messages.AddRange(history.Select(m => new ChatMessage(
+            m.Role == MessageRole.User ? ChatRole.User : ChatRole.Assistant, m.Content)));
+        messages.Add(new ChatMessage(ChatRole.User, userText));
 
         // 3. Persist the user turn immediately — if the LLM call dies we still know what was asked.
         //    The interceptor stamps TenantId/SiteId on both rows (ISiteScoped).
@@ -91,28 +88,52 @@ public sealed class ChatService(
         conversation.LastMessageAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        // 4. The tool loop, with this site's enabled tools and the executed calls streamed out.
-        var tools = toolRegistry.DefinitionsFor(site);
-        var toolCallLog = new List<object>();
+        // 4. One call replaces the hand-rolled loop: UseFunctionInvocation() runs the
+        //    send → tool_calls → execute → resend rounds internally and returns when the model
+        //    answers with plain content (or the round cap trips).
+        var model = llmFactory.ResolveModel(site.Model);
+        var chatOptions = new ChatOptions { Tools = toolRegistry.AIToolsFor(site) };
         var stopwatch = Stopwatch.StartNew();
 
-        var model = loop.ResolveModel(site.Model);
-        var (finalMessages, usage, rounds) = await loop.RunAsync(
-            messages,
-            tools,
-            (name, args, token) => toolRegistry.ExecuteAsync(name, args, site, token),
-            model,
-            onToolExecuted: async (call, result) =>
-            {
-                toolCallLog.Add(new { name = call.Function.Name, arguments = call.Function.Arguments, result });
-                await emit("tool", new { name = call.Function.Name, arguments = call.Function.Arguments });
-            },
-            ct);
+        var response = await llmFactory.GetForModel(model)
+            .GetResponseAsync(messages, chatOptions, ct);
 
         stopwatch.Stop();
-        var answer = finalMessages[^1].Content ?? "";
+        var answer = response.Messages.Count > 0 ? response.Messages[^1].Text : "";
 
-        // 5. Stream the answer as delta events. DEV SHORTCUT: the loop above is non-streaming
+        // The response carries every intermediate message the loop produced; replay the
+        // call/result pairs for the SSE `tool` events and the jsonb log. (With the hand-rolled
+        // loop we observed calls as they ran; the framework hands them back afterwards.)
+        var toolCallLog = new List<object>();
+        var callsById = new Dictionary<string, FunctionCallContent>();
+        foreach (var content in response.Messages.SelectMany(m => m.Contents))
+        {
+            if (content is FunctionCallContent call)
+            {
+                callsById[call.CallId] = call;
+                await emit("tool", new
+                {
+                    name = call.Name,
+                    arguments = JsonSerializer.Serialize(call.Arguments),
+                });
+            }
+            else if (content is FunctionResultContent result
+                     && callsById.TryGetValue(result.CallId, out var matchedCall))
+            {
+                toolCallLog.Add(new
+                {
+                    name = matchedCall.Name,
+                    arguments = JsonSerializer.Serialize(matchedCall.Arguments),
+                    result = JsonSerializer.Serialize(result.Result),
+                });
+            }
+        }
+
+        var rounds = Math.Max(1, response.Messages.Count(m => m.Role == ChatRole.Assistant));
+        var tokensIn = (int)(response.Usage?.InputTokenCount ?? 0);
+        var tokensOut = (int)(response.Usage?.OutputTokenCount ?? 0);
+
+        // 5. Stream the answer as delta events. DEV SHORTCUT: the call above is non-streaming
         //    (LM Studio/DashScope streaming of tool-call deltas is the known-flaky area), so we
         //    chunk the finished text — the client-facing SSE contract is already the real one.
         foreach (var chunk in Chunk(answer, 48))
@@ -126,9 +147,9 @@ public sealed class ChatService(
             Role = MessageRole.Assistant,
             Content = answer,
             ToolCalls = toolCallLog.Count > 0 ? JsonSerializer.Serialize(toolCallLog) : null,
-            Model = model,
-            TokensIn = usage.PromptTokens,
-            TokensOut = usage.CompletionTokens,
+            Model = response.ModelId ?? model, // the server reports the model it actually ran
+            TokensIn = tokensIn,
+            TokensOut = tokensOut,
             LatencyMs = (int)stopwatch.ElapsedMilliseconds,
         });
         conversation.LastMessageAt = DateTimeOffset.UtcNow;
@@ -141,7 +162,7 @@ public sealed class ChatService(
         var usageDate = DateOnly.FromDateTime(siteNow.Date);
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO usage_daily ("SiteId", "TenantId", "Date", "TokensIn", "TokensOut", "MessageCount")
-            VALUES ({site.Id}, {site.TenantId}, {usageDate}, {usage.PromptTokens}, {usage.CompletionTokens}, 1)
+            VALUES ({site.Id}, {site.TenantId}, {usageDate}, {tokensIn}, {tokensOut}, 1)
             ON CONFLICT ("SiteId", "Date") DO UPDATE SET
                 "TokensIn" = usage_daily."TokensIn" + EXCLUDED."TokensIn",
                 "TokensOut" = usage_daily."TokensOut" + EXCLUDED."TokensOut",
@@ -153,7 +174,7 @@ public sealed class ChatService(
             conversationId = conversation.Id,
             anonId,
             rounds,
-            usage = new { inTokens = usage.PromptTokens, outTokens = usage.CompletionTokens },
+            usage = new { inTokens = tokensIn, outTokens = tokensOut },
             latencyMs = (int)stopwatch.ElapsedMilliseconds,
         });
     }

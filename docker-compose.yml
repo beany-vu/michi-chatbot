@@ -25,10 +25,12 @@ services:
     environment:
       ConnectionStrings__Chatbot: "Host=db;Port=5432;Database=chatbot;Username=chatbot"
       ASPNETCORE_URLS: "http://+:8080"
-      # host.docker.internal is Docker Desktop's DNS name for the Windows host — that's where LM
-      # Studio runs (WSL2 NAT means the container can't reach it via localhost). Model is per-machine
-      # (whatever's actually loaded), so it comes from the gitignored .env like the port vars below.
-      Llm__BaseUrl: "http://host.docker.internal:1234/v1"
+      # Ollama runs INSIDE this machine's WSL distro (not Windows) — replaced LM Studio (2026-07-24),
+      # whose Windows-side server was never reachable from WSL/Docker. host.docker.internal does NOT
+      # reach it either (that only routes to Windows' real interfaces; WSL's loopback-forwarded ports
+      # are a Windows Firewall gap, not fixable from here) — Docker CAN reach the WSL distro's own
+      # eth0 IP directly though, hence MICHI_OLLAMA_HOST from the gitignored .env (see its comment).
+      Llm__BaseUrl: "http://${MICHI_OLLAMA_HOST}:11434/v1"
       Llm__Model: "${MICHI_LLM_MODEL}"
       GoogleCalendar__CredentialsPath: "/run/secrets/google-calendar.json"
     volumes:
